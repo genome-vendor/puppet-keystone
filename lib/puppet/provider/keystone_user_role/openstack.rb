@@ -118,7 +118,19 @@ Puppet::Type.type(:keystone_user_role).provide(
   end
 
   def get_user_id
-    @user_id ||= Puppet::Resource.indirection.find("Keystone_user/#{get_user}")[:id]
+    project_id = get_project_id
+    if project_id
+      project_domain = self.class.get_domain_id (get_project_id)
+    else
+      project_domain = get_domain
+    end
+    user_name, user_domain = self.class.name_and_domain(get_user,nil,project_domain)
+    self.class.get_users(user_domain).each do |user|
+      if user[:name] == user_name
+        @user_id = user[:id]
+      end
+    end
+    @user_id
   end
 
   def get_project_id
@@ -133,6 +145,10 @@ Puppet::Type.type(:keystone_user_role).provide(
     @project_id
   end
 
+  def self.get_domain_id (project_id=nil)
+    request('project', 'show', "#{project_id}")[:domain_id]
+  end
+
   def self.get_projects
     request('project', 'list', '--long').collect do |project|
       {
@@ -144,11 +160,9 @@ Puppet::Type.type(:keystone_user_role).provide(
     end
   end
 
-  def self.get_users(project_id=nil, domain_id=nil)
+  def self.get_users(domain_id=nil)
     properties = ['--long']
-    if project_id
-      properties << '--project' << project_id
-    elsif domain_id
+    if domain_id
       properties << '--domain' << domain_id
     end
     request('user', 'list', properties).collect do |user|
